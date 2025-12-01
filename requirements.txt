@@ -7,3 +7,4 @@ langchain-huggingface
 langchain_groq
 langchain-text-splitters
 pypdf
+langchain_chroma
