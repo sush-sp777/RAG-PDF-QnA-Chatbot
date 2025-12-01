@@ -13,7 +13,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-os.environ['HUGGINGFACE_TOKEN']=os.getenv("HUGGINGFACE_TOKEN")
+os.environ['HUGGINGFACE_TOKEN']=st.secrets["HUGGINGFACE_TOKEN"]
 
 embeddings=HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
