@@ -30,14 +30,6 @@ if api_key:
     
     session_id=st.text_input("Session ID",value="Default Session")
 
-    # # Consistent session ID
-    # if "session_id" not in st.session_state:
-    #     st.session_state.session_id = session_id
-    # else:
-    #     if session_id!=st.session_state.session_id:
-    #         st.session_state.session_id=session_id
-    # session_id=st.session_state.session_id
-
     # Initialize chat history store
     if 'store' not in st.session_state:
         st.session_state.store = {}
