@@ -137,7 +137,7 @@ if api_key:
                 }
             )
             # st.write(st.session_state.store)
-            st.success(f"Assistant: {response['answer']}")
+            st.markdown(f"Assistant: {response['answer']}")
             st.write("Chat History:",session_history.messages)
             
 
