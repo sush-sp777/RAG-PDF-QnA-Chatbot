@@ -43,6 +43,9 @@ if api_key:
 
     if "active_pdf_id" not in st.session_state:
         st.session_state.active_pdf_id = None
+    
+    if 'pdf_settings' not in st.session_state:
+        st.session_state.pdf_settings = {}
 
     uploaded_files=st.file_uploader("Choose PDF file",type="pdf",accept_multiple_files=True)
     
@@ -62,8 +65,20 @@ if api_key:
 
             loader = PyPDFLoader(temp_path)
             documents = loader.load()
+            
+            num_pages=len(documents)
 
-            text_splitter=RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=400)
+            if num_pages <= 20:
+                chunk_size, chunk_overlap, k = 1000, 400, 3
+            elif num_pages <= 50:
+                chunk_size, chunk_overlap, k = 1500, 300, 5
+            else:
+                chunk_size, chunk_overlap, k = 2000, 200, 7
+
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap
+            )
             splits=text_splitter.split_documents(documents)
             if not splits:
                 st.error("❌ No readable text found in the uploaded PDF(s).")
@@ -76,6 +91,8 @@ if api_key:
             st.session_state.vectorstores[pdf_id] = vectorstore
             st.session_state.uploaded_pdfs[pdf_id] = pdf_id
             st.session_state.chat_histories[pdf_id] = ChatMessageHistory()
+            
+            st.session_state.pdf_settings[pdf_id] = {"chunk_size": chunk_size, "chunk_overlap": chunk_overlap, "k": k}
 
             if st.session_state.active_pdf_id is None:
                 st.session_state.active_pdf_id = pdf_id
@@ -95,9 +112,14 @@ if api_key:
 
         st.session_state.active_pdf_id = selected_pdf
         st.info(f"Active PDF: {selected_pdf}")
+        
+        if st.button("🔄 Reset Chat for Active PDF"):
+            st.session_state.chat_histories[selected_pdf] = ChatMessageHistory()
+            st.success(f"Chat history cleared for {selected_pdf}")
 
         vectorstore = st.session_state.vectorstores[selected_pdf]
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+        k = st.session_state.pdf_settings[selected_pdf]["k"]
+        retriever = vectorstore.as_retriever(search_kwargs={"k": k})
 
 
         contextualize_q_system_prompt=(
