@@ -17,20 +17,14 @@ os.environ['HUGGINGFACE_TOKEN']=os.getenv("HUGGINGFACE_TOKEN")
 
 embeddings=HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-#setup streamlit
-st.title("Conversational RAG with PDF uploads with chat history")
+st.set_page_config(page_title="Conversational RAG with PDF uploads",page_icon="🦜")
+st.title("Conversational RAG System for Multi-PDF Question Answering")
 st.write("Upload PDF's and chat with their content")
 
-#input the groq api key
 api_key=st.text_input("Enter your Groq API key:",type="password")
 
-#check if groq api key is provided
 if api_key:
     llm=ChatGroq(groq_api_key=api_key,model="llama-3.1-8b-instant")
-    
-    # session_id=st.text_input("Session ID",value="Default Session")
-
-    # Initialize chat history store
     
     if 'vectorstores' not in st.session_state:
         st.session_state.vectorstores = {}
@@ -49,16 +43,13 @@ if api_key:
 
     uploaded_files=st.file_uploader("Choose PDF file",type="pdf",accept_multiple_files=True)
     
-    #process my uploaded files
     if uploaded_files:
         for uploaded_file in uploaded_files:
-            pdf_id = uploaded_file.name  # stable identity
+            pdf_id = uploaded_file.name  
 
-            # Skip if already processed
             if pdf_id in st.session_state.vectorstores:
                 continue
 
-            # Save temp file
             temp_path = f"./temp_{pdf_id}"
             with open(temp_path, "wb") as f:
                 f.write(uploaded_file.getvalue())
@@ -80,6 +71,12 @@ if api_key:
                 chunk_overlap=chunk_overlap
             )
             splits=text_splitter.split_documents(documents)
+
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
             if not splits:
                 st.error("❌ No readable text found in the uploaded PDF(s).")
                 st.stop()
@@ -148,13 +145,13 @@ if api_key:
             |retriever
         )
 
-        #answer question prompt
         system_prompt=(
-            "You are an assistant for question answering task."
-            "Use the following pieces of retrieved context to answer "
-            "the question. If you don't know the answer say that you dont know."
-            "Use five sentences maximum and keep context concise."
-            "\n\n"
+           "You are an assistant for question answering tasks. "
+            "Use the following retrieved context only to answer the question. "
+            "Each context chunk contains metadata with page numbers. "
+            "Always mention the page number(s) in your answer like (Page 3) or (Pages 5-6). "
+            "If you do not know the answer, say that you do not know. "
+            "Provide concise answers for short questions, but allow up to 15–20 sentences if the context is large.\n\n"
             "{context}"
         )
 
@@ -171,10 +168,17 @@ if api_key:
             |llm
             |(lambda x:{"answer": x.content})
         )
-
+        
+        def format_docs(docs):
+            formatted = []
+            for doc in docs:
+                page = doc.metadata.get("page", "N/A")
+                formatted.append(f"[Page {page}]\n{doc.page_content}")
+            return "\n\n".join(formatted)
+        
         rag_chain=(
             {
-                "context":history_aware_retriever,
+                "context":(history_aware_retriever|format_docs),
                 "chat_history": itemgetter("chat_history"),
                 "input":itemgetter("input")
             }
@@ -202,7 +206,7 @@ if api_key:
                 }
             )
             
-            st.markdown(f"Assistant: {response['answer']}")
+            st.markdown(f"✅ **Assistant**\n\n{response['answer']}")
             with st.expander("Chat History"):
                 for msg in st.session_state.chat_histories[selected_pdf].messages:
                     st.write(msg)
