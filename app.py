@@ -13,7 +13,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-os.environ['HUGGINGFACE_TOKEN']=st.secrets["HUGGINGFACE_TOKEN"]
+os.environ['HUGGINGFACE_TOKEN']=os.getenv("HUGGINGFACE_TOKEN")
 
 embeddings=HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
@@ -31,29 +31,40 @@ if api_key:
     session_id=st.text_input("Session ID",value="Default Session")
 
     # Initialize chat history store
-    if 'store' not in st.session_state:
+    if 'vectorstores' not in st.session_state:
+        st.session_state.vectorstores = {}
+    if "store" not in st.session_state:
         st.session_state.store = {}
 
     uploaded_files=st.file_uploader("Choose PDF file",type="pdf",accept_multiple_files=True)
     
     #process my uploaded files
     if uploaded_files:
-        documents=[]
-        for uploaded_file in uploaded_files:
-            temppdf=f"./temp_{uploaded_file.name}.pdf"
-            with open(temppdf,'wb') as file:
-                file.write(uploaded_file.getvalue())  #This converts the in-memory PDF into a real file on disk. getvalue()-returns the raw PDF bytes.
-                file_name=uploaded_file.name   
+        file_names=sorted([f.name for f in uploaded_files])
+        document_set_id="_".join(file_names)
+        if document_set_id not in st.session_state.vectorstores:
+            documents=[]
+            for uploaded_file in uploaded_files:
+                temppdf=f"./temp_{uploaded_file.name}.pdf"
+                with open(temppdf,'wb') as file:
+                    file.write(uploaded_file.getvalue()) 
+                    
 
-            loader=PyPDFLoader(temppdf)
-            docs=loader.load()
-            documents.extend(docs)
+                loader=PyPDFLoader(temppdf)
+                docs=loader.load()
+                documents.extend(docs)
 
-        #split and create embeddings for the documents
-        text_splitter=RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=400)
-        splits=text_splitter.split_documents(documents)
-        vectorstore=Chroma.from_documents(documents=splits,embedding=embeddings)
-        retriever=vectorstore.as_retriever(search_kwargs={"k":3})
+            text_splitter=RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=400)
+            splits=text_splitter.split_documents(documents)
+            if not splits:
+                st.error("❌ No readable text found in the uploaded PDF(s).")
+                st.stop()
+            st.session_state.vectorstores[document_set_id] = Chroma.from_documents(
+                documents=splits,
+                embedding=embeddings
+            )
+        vectorstore = st.session_state.vectorstores[document_set_id]
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
         contextualize_q_system_prompt=(
             "Given a chat history and latest user question "
