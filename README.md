@@ -76,13 +76,13 @@ Answer with Page References
 
 1. User uploads one or more PDFs
 2. Each PDF is:
- - Loaded page-wise
- - Split using dynamic chunking
- - Embedded and stored in its own Chroma collection
+   - Loaded page-wise
+   - Split using dynamic chunking
+   - Embedded and stored in its own Chroma collection
 3. User selects an active PDF
 4. Questions are answered using:
- - PDF-specific vector store
- - PDF-specific chat history
+   - PDF-specific vector store
+   - PDF-specific chat history
 5. Follow-ups are reformulated for better retrieval
    
 ---
