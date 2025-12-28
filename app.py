@@ -28,43 +28,77 @@ api_key=st.text_input("Enter your Groq API key:",type="password")
 if api_key:
     llm=ChatGroq(groq_api_key=api_key,model="llama-3.1-8b-instant")
     
-    session_id=st.text_input("Session ID",value="Default Session")
+    # session_id=st.text_input("Session ID",value="Default Session")
 
     # Initialize chat history store
+    
     if 'vectorstores' not in st.session_state:
         st.session_state.vectorstores = {}
-    if "store" not in st.session_state:
-        st.session_state.store = {}
+    
+    if "uploaded_pdfs" not in st.session_state:
+        st.session_state.uploaded_pdfs = {}
+    
+    if "chat_histories" not in st.session_state:
+        st.session_state.chat_histories = {}
+
+    if "active_pdf_id" not in st.session_state:
+        st.session_state.active_pdf_id = None
 
     uploaded_files=st.file_uploader("Choose PDF file",type="pdf",accept_multiple_files=True)
     
     #process my uploaded files
     if uploaded_files:
-        file_names=sorted([f.name for f in uploaded_files])
-        document_set_id="_".join(file_names)
-        if document_set_id not in st.session_state.vectorstores:
-            documents=[]
-            for uploaded_file in uploaded_files:
-                temppdf=f"./temp_{uploaded_file.name}.pdf"
-                with open(temppdf,'wb') as file:
-                    file.write(uploaded_file.getvalue()) 
-                    
+        for uploaded_file in uploaded_files:
+            pdf_id = uploaded_file.name  # stable identity
 
-                loader=PyPDFLoader(temppdf)
-                docs=loader.load()
-                documents.extend(docs)
+            # Skip if already processed
+            if pdf_id in st.session_state.vectorstores:
+                continue
+
+            # Save temp file
+            temp_path = f"./temp_{pdf_id}"
+            with open(temp_path, "wb") as f:
+                f.write(uploaded_file.getvalue())
+
+            loader = PyPDFLoader(temp_path)
+            documents = loader.load()
 
             text_splitter=RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=400)
             splits=text_splitter.split_documents(documents)
             if not splits:
                 st.error("❌ No readable text found in the uploaded PDF(s).")
                 st.stop()
-            st.session_state.vectorstores[document_set_id] = Chroma.from_documents(
+            vectorstore = Chroma.from_documents(
                 documents=splits,
-                embedding=embeddings
+                embedding=embeddings,
+                collection_name=pdf_id
             )
-        vectorstore = st.session_state.vectorstores[document_set_id]
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+            st.session_state.vectorstores[pdf_id] = vectorstore
+            st.session_state.uploaded_pdfs[pdf_id] = pdf_id
+            st.session_state.chat_histories[pdf_id] = ChatMessageHistory()
+
+            if st.session_state.active_pdf_id is None:
+                st.session_state.active_pdf_id = pdf_id
+
+            st.success(f"Indexed: {pdf_id}")
+
+    if st.session_state.uploaded_pdfs:
+        st.subheader("Select Active PDF")
+
+        selected_pdf = st.selectbox(
+            "Active document",
+            options=list(st.session_state.uploaded_pdfs.keys()),
+            index=list(st.session_state.uploaded_pdfs.keys()).index(
+                st.session_state.active_pdf_id
+            )
+        )
+
+        st.session_state.active_pdf_id = selected_pdf
+        st.info(f"Active PDF: {selected_pdf}")
+
+        vectorstore = st.session_state.vectorstores[selected_pdf]
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+
 
         contextualize_q_system_prompt=(
             "Given a chat history and latest user question "
@@ -124,11 +158,9 @@ if api_key:
             }
             |question_answer_chain
         )
+        def get_session_history(_: str) -> BaseChatMessageHistory:
+            return st.session_state.chat_histories[selected_pdf]
 
-        def get_session_history(session:str)->BaseChatMessageHistory:
-            if session not in st.session_state.store:
-                st.session_state.store[session]=ChatMessageHistory()
-            return st.session_state.store[session]
         
         conversational_rag_chain=RunnableWithMessageHistory(
             rag_chain,
@@ -140,20 +172,21 @@ if api_key:
         
         user_input=st.text_input("Your Question:")
         if user_input:
-            session_history=get_session_history(session_id)
+            
             response=conversational_rag_chain.invoke(
                 {"input":user_input},
                 config={
-                    "configurable":{"session_id":session_id}
+                    "configurable":{"session_id":selected_pdf}
                 }
             )
-            # st.write(st.session_state.store)
-            st.markdown(f"Assistant: {response['answer']}")
-            st.write("Chat History:",session_history.messages)
             
+            st.markdown(f"Assistant: {response['answer']}")
+            with st.expander("Chat History"):
+                for msg in st.session_state.chat_histories[selected_pdf].messages:
+                    st.write(msg)
 
 else:
-    st.warning("Please Enter your Groq API Key")
+    st.warning("Please enter your Groq API key")
 
 
 
