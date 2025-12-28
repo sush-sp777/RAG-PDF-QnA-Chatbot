@@ -1,61 +1,104 @@
-# Conversational RAG Chatbot with PDF Uploads and Chat History
+# 📄 Conversational Multi-PDF RAG Chatbot
 
-This project is a **Conversational AI application** that allows users to upload PDF documents and interact with their content via a chat interface. It uses **LangChain**, **Groq LLM (Llama 3.1-8B)**, **Chroma Vector Store**, and **HuggingFace embeddings** for retrieval-augmented generation (RAG).
+A production-grade **Conversational RAG application** that allows users to upload multiple PDFs, chat with each document independently, and reliably handle **large PDFs** (50+ pages) without context leakage.
+Built using **LangChain**, **Groq LLM (Llama 3.1-8B-instant)**, **Chroma Vector Store**, **HuggingFace embeddings**, and **Streamlit**.
 
 ---
 
-## Live Demo
+## 🚀 Live Demo
 
 Try the chatbot online on **Streamlit**:  
 [🔗 Live Demo](https://lvfpemstezdoufsj4kviqc.streamlit.app/)
 
-You can upload your own PDFs, ask questions, and see the **context-aware chat history** in action.
----
-## How to Use
+You can:
 
-1. **Enter Groq API Key:**  
-   - You need a valid Groq API key to run the LLM. Enter it in the provided input box.  
-
-2. **Set Session ID (Optional):**  
-   - By default, a session ID `"Default Session"` is used.  
-   - You can enter a custom session ID to start a separate chat session.  
-   - Each session maintains its own **chat history**.  
-
-3. **Upload PDFs:**  
-   - Click the “Choose PDF file” button and upload one or multiple PDFs.  
-   - The app will automatically read, split, and embed the documents for retrieval.  
-
-4. **Ask Questions:**  
-   - Type your question in the chat input box.  
-   - The chatbot retrieves relevant information from your uploaded PDFs and provides concise answers.  
-
-5. **View Chat History:**  
-   - The chat history for the current session is displayed below the chat input.  
-   - Switch sessions to start a new conversation without losing previous context.
----
-## Features
-
-- Upload multiple PDF documents.  
-- Split PDFs into chunks and generate embeddings.  
-- Store embeddings in a vector store (Chroma) for fast retrieval.  
-- Chat with uploaded documents using Groq LLM.  
-- Keep **session-based chat history**.  
-- Reformulate questions to be **standalone** for better context.  
+- Upload multiple PDFs
+- Switch between documents
+- Ask follow-up questions with document-scoped memory
+- Reset chat per document
 
 ---
 
-## Tech Stack
-
-- **Streamlit** - Frontend interface  
-- **LangChain** - RAG pipelines, prompts, chains, message history  
-- **Groq LLM** - Llama 3.1-8B Instant  
-- **HuggingFace Embeddings** - sentence-transformers/all-MiniLM-L6-v2  
-- **Chroma** - Vector storage for document embeddings  
-- **Python-dotenv** - Load API keys securely  
+## 🧠 Problem Statement (Why this project matters)
+Most beginner RAG apps fail when:
+- Multiple PDFs are uploaded
+- Chat history leaks between documents
+- Large PDFs (>30–50 pages) return poor answers
+- The same session memory is reused incorrectly
+This project explicitly solves these real-world RAG problems.
 
 ---
 
-## Installation
+## ✨ Key Features
+
+1. ✅ Multi-PDF Support with Isolation
+   - Each PDF gets its own vector store
+   - No cross-document context leakage
+2. ✅ Document-Scoped Conversational Memory
+   - Chat history is bound to the selected PDF
+   - You can switch PDFs and continue independent conversations
+3. ✅ Dynamic Chunking for Large PDFs
+   Chunk size and retrieval depth adapt automatically:
+   - Small PDFs → smaller chunks
+   - Large PDFs (50+ pages) → larger chunks + higher retrieval k
+4. ✅ History-Aware Retrieval
+   - Follow-up questions are reformulated into standalone queries
+   - Improves accuracy for conversational flows
+5. ✅ Page-Aware Answers
+   - Answers reference PDF page numbers
+   - Improves trust and explainability
+6. ✅ Reset Chat Per Document
+   - Clear chat history without re-embedding PDFs
+     
+---
+
+## 🏗️ Architecture Overview
+```
+User → Streamlit UI
+        ↓
+PDF Upload → PyPDFLoader
+        ↓
+Text Splitter
+        ↓
+HuggingFace Embeddings
+        ↓
+Chroma Vector Store (per PDF)
+        ↓
+History-Aware Retriever
+        ↓
+Groq LLM (Llama 3.1-8B-instant)
+        ↓
+Answer with Page References
+```
+---
+
+## 🔍 How It Works (High Level)
+
+1. User uploads one or more PDFs
+2. Each PDF is:
+ - Loaded page-wise
+ - Split using dynamic chunking
+ - Embedded and stored in its own Chroma collection
+3. User selects an active PDF
+4. Questions are answered using:
+ - PDF-specific vector store
+ - PDF-specific chat history
+5. Follow-ups are reformulated for better retrieval
+   
+---
+
+## 🛠️ Tech Stack
+
+- Streamlit – UI & state management
+- LangChain – RAG chains, retrievers, memory
+- Groq LLM – Llama 3.1-8B Instant
+- HuggingFace Embeddings – all-MiniLM-L6-v2
+- ChromaDB – Vector store
+- Python-dotenv – Environment variable management
+
+---
+
+## ⚙️ Installation & Setup
 
 1. Clone the repository:
 
@@ -78,15 +121,26 @@ pip install -r requirements.txt
 HUGGINGFACE_TOKEN=your_huggingface_token
 ```
 ---
+
 ## Usage
 
 1. Run Streamlit app:
 ```bash
 streamlit run app.py
 ```
-2. Enter your Groq API Key in the text input.
-3. Optionally, choose or enter a Session ID.
-4. Upload PDF documents.
-5. Ask questions in the chat input.
-6. Chat history is stored per session.
+1. Enter your Groq API key
+2. Upload one or more PDFs
+3. Select active PDF
+4. Ask questions or summarize documents
+5. Reset chat if needed
+---
+## 👨‍💻 Author
+
+**Sushant Patil**
+
+Generative AI Engineer
+
+🔗 https://github.com/sush-sp777
+🔗 https://www.linkedin.com/in/sushant-patil-9a05ab2a4/
+
 ---
