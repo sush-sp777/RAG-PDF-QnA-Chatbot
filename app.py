@@ -13,47 +13,111 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-os.environ['HUGGINGFACE_TOKEN']=st.secrets["HUGGINGFACE_TOKEN"]
+os.environ['HUGGINGFACE_TOKEN']=os.getenv("HUGGINGFACE_TOKEN")
 
 embeddings=HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-#setup streamlit
-st.title("Conversational RAG with PDF uploads with chat history")
+st.set_page_config(page_title="Conversational RAG with PDF uploads",page_icon="🦜")
+st.title("Conversational RAG System for Multi-PDF Question Answering")
 st.write("Upload PDF's and chat with their content")
 
-#input the groq api key
 api_key=st.text_input("Enter your Groq API key:",type="password")
 
-#check if groq api key is provided
 if api_key:
     llm=ChatGroq(groq_api_key=api_key,model="llama-3.1-8b-instant")
     
-    session_id=st.text_input("Session ID",value="Default Session")
+    if 'vectorstores' not in st.session_state:
+        st.session_state.vectorstores = {}
+    
+    if "uploaded_pdfs" not in st.session_state:
+        st.session_state.uploaded_pdfs = {}
+    
+    if "chat_histories" not in st.session_state:
+        st.session_state.chat_histories = {}
 
-    # Initialize chat history store
-    if 'store' not in st.session_state:
-        st.session_state.store = {}
+    if "active_pdf_id" not in st.session_state:
+        st.session_state.active_pdf_id = None
+    
+    if 'pdf_settings' not in st.session_state:
+        st.session_state.pdf_settings = {}
 
     uploaded_files=st.file_uploader("Choose PDF file",type="pdf",accept_multiple_files=True)
     
-    #process my uploaded files
     if uploaded_files:
-        documents=[]
         for uploaded_file in uploaded_files:
-            temppdf=f"./temp_{uploaded_file.name}.pdf"
-            with open(temppdf,'wb') as file:
-                file.write(uploaded_file.getvalue())  #This converts the in-memory PDF into a real file on disk. getvalue()-returns the raw PDF bytes.
-                file_name=uploaded_file.name   
+            pdf_id = uploaded_file.name  
 
-            loader=PyPDFLoader(temppdf)
-            docs=loader.load()
-            documents.extend(docs)
+            if pdf_id in st.session_state.vectorstores:
+                continue
 
-        #split and create embeddings for the documents
-        text_splitter=RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=400)
-        splits=text_splitter.split_documents(documents)
-        vectorstore=Chroma.from_documents(documents=splits,embedding=embeddings)
-        retriever=vectorstore.as_retriever(search_kwargs={"k":3})
+            temp_path = f"./temp_{pdf_id}"
+            with open(temp_path, "wb") as f:
+                f.write(uploaded_file.getvalue())
+
+            loader = PyPDFLoader(temp_path)
+            documents = loader.load()
+            
+            num_pages=len(documents)
+
+            if num_pages <= 20:
+                chunk_size, chunk_overlap, k = 1000, 400, 3
+            elif num_pages <= 50:
+                chunk_size, chunk_overlap, k = 1500, 300, 5
+            else:
+                chunk_size, chunk_overlap, k = 2000, 200, 7
+
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap
+            )
+            splits=text_splitter.split_documents(documents)
+
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+            if not splits:
+                st.error("❌ No readable text found in the uploaded PDF(s).")
+                st.stop()
+            vectorstore = Chroma.from_documents(
+                documents=splits,
+                embedding=embeddings,
+                collection_name=pdf_id
+            )
+            st.session_state.vectorstores[pdf_id] = vectorstore
+            st.session_state.uploaded_pdfs[pdf_id] = pdf_id
+            st.session_state.chat_histories[pdf_id] = ChatMessageHistory()
+            
+            st.session_state.pdf_settings[pdf_id] = {"chunk_size": chunk_size, "chunk_overlap": chunk_overlap, "k": k}
+
+            if st.session_state.active_pdf_id is None:
+                st.session_state.active_pdf_id = pdf_id
+
+            st.success(f"Indexed: {pdf_id}")
+
+    if st.session_state.uploaded_pdfs:
+        st.subheader("Select Active PDF")
+
+        selected_pdf = st.selectbox(
+            "Active document",
+            options=list(st.session_state.uploaded_pdfs.keys()),
+            index=list(st.session_state.uploaded_pdfs.keys()).index(
+                st.session_state.active_pdf_id
+            )
+        )
+
+        st.session_state.active_pdf_id = selected_pdf
+        st.info(f"Active PDF: {selected_pdf}")
+        
+        if st.button("🔄 Reset Chat for Active PDF"):
+            st.session_state.chat_histories[selected_pdf] = ChatMessageHistory()
+            st.success(f"Chat history cleared for {selected_pdf}")
+
+        vectorstore = st.session_state.vectorstores[selected_pdf]
+        k = st.session_state.pdf_settings[selected_pdf]["k"]
+        retriever = vectorstore.as_retriever(search_kwargs={"k": k})
+
 
         contextualize_q_system_prompt=(
             "Given a chat history and latest user question "
@@ -81,13 +145,13 @@ if api_key:
             |retriever
         )
 
-        #answer question prompt
         system_prompt=(
-            "You are an assistant for question answering task."
-            "Use the following pieces of retrieved context to answer "
-            "the question. If you don't know the answer say that you dont know."
-            "Use five sentences maximum and keep context concise."
-            "\n\n"
+           "You are an assistant for question answering tasks. "
+            "Use the following retrieved context only to answer the question. "
+            "Each context chunk contains metadata with page numbers. "
+            "Always mention the page number(s) in your answer like (Page 3) or (Pages 5-6). "
+            "If you do not know the answer, say that you do not know. "
+            "Provide concise answers for short questions, but allow up to 15–20 sentences if the context is large.\n\n"
             "{context}"
         )
 
@@ -104,20 +168,25 @@ if api_key:
             |llm
             |(lambda x:{"answer": x.content})
         )
-
+        
+        def format_docs(docs):
+            formatted = []
+            for doc in docs:
+                page = doc.metadata.get("page", "N/A")
+                formatted.append(f"[Page {page}]\n{doc.page_content}")
+            return "\n\n".join(formatted)
+        
         rag_chain=(
             {
-                "context":history_aware_retriever,
+                "context":(history_aware_retriever|format_docs),
                 "chat_history": itemgetter("chat_history"),
                 "input":itemgetter("input")
             }
             |question_answer_chain
         )
+        def get_session_history(_: str) -> BaseChatMessageHistory:
+            return st.session_state.chat_histories[selected_pdf]
 
-        def get_session_history(session:str)->BaseChatMessageHistory:
-            if session not in st.session_state.store:
-                st.session_state.store[session]=ChatMessageHistory()
-            return st.session_state.store[session]
         
         conversational_rag_chain=RunnableWithMessageHistory(
             rag_chain,
@@ -129,20 +198,21 @@ if api_key:
         
         user_input=st.text_input("Your Question:")
         if user_input:
-            session_history=get_session_history(session_id)
+            
             response=conversational_rag_chain.invoke(
                 {"input":user_input},
                 config={
-                    "configurable":{"session_id":session_id}
+                    "configurable":{"session_id":selected_pdf}
                 }
             )
-            # st.write(st.session_state.store)
-            st.markdown(f"Assistant: {response['answer']}")
-            st.write("Chat History:",session_history.messages)
             
+            st.markdown(f"✅ **Assistant**\n\n{response['answer']}")
+            with st.expander("Chat History"):
+                for msg in st.session_state.chat_histories[selected_pdf].messages:
+                    st.write(msg)
 
 else:
-    st.warning("Please Enter your Groq API Key")
+    st.warning("Please enter your Groq API key")
 
 
 
