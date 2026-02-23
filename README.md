@@ -138,7 +138,7 @@ streamlit run app.py
 
 **Sushant Patil**
 
-Generative AI Engineer
+AI Engineer
 
 🔗 https://github.com/sush-sp777
 
