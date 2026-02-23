@@ -141,6 +141,7 @@ streamlit run app.py
 Generative AI Engineer
 
 🔗 https://github.com/sush-sp777
+
 🔗 https://www.linkedin.com/in/sushant-patil-9a05ab2a4/
 
 ---
