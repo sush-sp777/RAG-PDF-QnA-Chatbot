@@ -1,6 +1,6 @@
 # 📄 Conversational Multi-PDF RAG Chatbot
 
-A production-grade **Conversational RAG application** that allows users to upload multiple PDFs, chat with each document independently, and reliably handle **large PDFs** (50+ pages) without context leakage.
+A production-grade **Conversational RAG application** that allows users to upload multiple PDFs, chat with each document independently, and reliably handle **large PDFs** (100+ pages) without context leakage.
 Built using **LangChain**, **Groq LLM (Llama 3.1-8B-instant)**, **Chroma Vector Store**, **HuggingFace embeddings**, and **Streamlit**.
 
 ---
